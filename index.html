@@ -1,3 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Nokia 3310</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -87,7 +90,7 @@ body {
   box-shadow: inset 0 .5cqw 1.2cqw rgba(0,0,0,.75), 0 .4cqw 0 rgba(255,255,255,.16);
 }
 .screen {
-  position: relative; aspect-ratio: 84 / 48; overflow: hidden; border-radius: .8cqw;
+  position: relative; padding: 2cqw; overflow: hidden; border-radius: .8cqw;
   background-color: var(--lcd-dim);
   box-shadow: inset 0 .6cqw 1.6cqw rgba(0,0,0,.5);
   transition: background-color .6s, box-shadow .6s;
@@ -100,7 +103,7 @@ body {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(115deg, rgba(255,255,255,.16), transparent 38%);
 }
-#lcd { display: block; width: 100%; height: 100%; }
+#lcd { display: block; width: 100%; aspect-ratio: 84 / 48; }
 
 .nav { display: grid; grid-template-columns: 19cqw 1fr 19cqw; align-items: center; gap: 3.5cqw; margin: 6cqw 0 4.5cqw; }
 .updown { display: grid; gap: 2cqw; }
@@ -426,6 +429,12 @@ function wake() {
 }
 
 /* ================= generic list menu ================= */
+/* scrollbar on the right edge: pos runs 0..last, n rows of which 4 fit on screen */
+function scrollbar(pos, last, n) {
+  for (let y = 11; y <= 45; y += 2) px(83, y);
+  const th = Math.max(4, Math.round(35 * 4 / n));
+  fillR(82, 11 + Math.round((35 - th) * pos / last), 2, th);
+}
 function Menu(title, getItems, onPick) {
   return {
     title, sel: 0, top: 0,
@@ -448,15 +457,10 @@ function Menu(title, getItems, onPick) {
       hline(0, 9, 84);
       for (let i = 0; i < 4 && this.top + i < n; i++) {
         const idx = this.top + i, y = 12 + i * 9, label = String(it[idx]).slice(0, 13);
-        if (idx === this.sel) frame(0, y - 2, n > 4 ? 80 : 84, 11);
-        txt(label, 3, y);
+        if (idx === this.sel) frame(0, y - 2, n > 4 ? 81 : 84, 11);
+        txt(label, 2, y);
       }
-      if (n > 4) {
-        for (let y = 11; y <= 45; y += 2) px(83, y);
-        const th = Math.max(4, Math.round(35 * 4 / n));
-        const ty = 11 + Math.round((35 - th) * this.sel / (n - 1));
-        fillR(82, ty, 2, th);
-      }
+      if (n > 4) scrollbar(this.sel, n - 1, n);
     }
   };
 }
@@ -468,7 +472,7 @@ const Box = {
   update(now) { if (cur === Box && now - this.t0 > 2600) back(); },
   draw() {
     const n = this.lines.length, th = n * 8 - 1, y0 = Math.round((48 - th) / 2);
-    frame(3, y0 - 5, 78, th + 10);
+    frame(1, y0 - 5, 82, th + 10);
     this.lines.forEach((l, i) => txtC(l, y0 + i * 8));
   }
 };
@@ -511,7 +515,7 @@ const MessagesMenu = Menu('MESSAGES', () => ['WRITE MESSAGE', `OUTBOX (${sent.le
   if (i === 0) { Compose.reset(); go(Compose); } else go(Outbox);
 });
 const GamesMenu = Menu('GAMES', ['SNAKE', 'HI-SCORE'], i => {
-  if (i === 0) go(SnakeLevel); else msgBox(['SNAKE HI-SCORE', String(hiScore)]);
+  if (i === 0) go(SnakeLevel); else msgBox(['SNAKE', 'HI-SCORE', String(hiScore)]);
 });
 const RingMenu = Menu('RINGTONES', TUNES.map(t => t[0]), i => { Viz.idx = i; go(Viz); });
 const SettingsMenu = Menu('SETTINGS', () => [
@@ -529,9 +533,10 @@ const MAP = {
   '7': 'PQRS7', '8': 'TUV8', '9': 'WXYZ9', '0': ' 0', '*': '*+-=/()'
 };
 const Compose = {
-  title: 'Write message', noRepeat: true,
+  title: 'Write message',
   msg: '', mode: 'ABC', last: null, lastT: 0, idx: 0, pending: false,
   reset() { this.msg = ''; this.mode = 'ABC'; this.last = null; this.pending = false; },
+  canErase() { return this.msg !== ''; },
   add(c) { if (this.msg.length < MAXLEN) this.msg += c; },
   key(k) {
     if (k === 'ok') return go(ComposeOptions);
@@ -584,7 +589,8 @@ const ComposeOptions = Menu('OPTIONS', ['SEND', 'CLEAR TEXT', 'EXIT'], i => {
   else { back(); back(); }
 });
 const NumberEntry = {
-  title: 'Send to', noRepeat: true, num: '',
+  title: 'Send to', num: '',
+  canErase() { return this.num !== ''; },
   key(k) {
     if (k === 'c') { if (this.num) this.num = this.num.slice(0, -1); else back(); }
     else if (k === 'ok') {
@@ -617,7 +623,8 @@ const Sending = {
     if (this.done && e > 3100) { Compose.reset(); backTo(MessagesMenu); }
   },
   draw(now) {
-    const e = now - this.t0;
+    /* t0 is set in the key handler, which can run after the start of the frame stamped `now` */
+    const e = Math.max(0, now - this.t0);
     if (!this.done) {
       envelope(Math.round(-14 + e / 1700 * 98), 12);
       txtC('SENDING' + '.'.repeat(Math.floor(e / 300) % 4), 32);
@@ -634,7 +641,12 @@ const Outbox = Menu('OUTBOX', () => sent.length ? [...sent.map(m => m.to), 'DELE
 });
 const MsgView = {
   title: 'Message', m: null, off: 0,
-  lines() { const s = this.m.text, out = []; for (let i = 0; i < s.length; i += COLS) out.push(s.slice(i, i + COLS)); return out; },
+  lines() {
+    /* text longer than one screen wraps a column narrower to leave room for the scrollbar */
+    const s = this.m.text, w = s.length > COLS * 4 ? COLS - 1 : COLS, out = [];
+    for (let i = 0; i < s.length; i += w) out.push(s.slice(i, i + w));
+    return out;
+  },
   key(k) {
     const n = this.lines().length;
     if (k === 'up') this.off = Math.max(0, this.off - 1);
@@ -642,14 +654,11 @@ const MsgView = {
     else if (k === 'c') back();
   },
   draw() {
-    const L = this.lines();
-    txt('TO ' + this.m.to.slice(0, 11), 1, 1);
+    const L = this.lines(), to = this.m.to;
+    txt(to.length > 11 ? to : 'TO ' + to, 1, 1);
     hline(0, 9, 84);
     for (let i = 0; i < 4 && this.off + i < L.length; i++) txt(L[this.off + i], 0, 11 + i * 8);
-    if (L.length > 4) {
-      if (this.off > 0) txt('<', 77, 1);
-      if (this.off < L.length - 4) txt('>', 77, 41);
-    }
+    if (L.length > 4) scrollbar(this.off, L.length - 4, L.length);
   }
 };
 
@@ -678,7 +687,7 @@ const SnakeLevel = {
 };
 const DIRS = { up: [0, -1], '2': [0, -1], down: [0, 1], '8': [0, 1], left: [-1, 0], '4': [-1, 0], right: [1, 0], '6': [1, 0] };
 const Snake = {
-  title: 'Snake', silent: true, keepLit: true, arrows: true, noRepeat: false,
+  title: 'Snake', silent: true, keepLit: true, arrows: true,
   COLS: 27, ROWS: 12,
   enter() {
     this.body = [9, 10, 11, 12].reverse().map(x => ({ x, y: 6 }));
@@ -782,7 +791,7 @@ const Viz = {
   },
   shake() { wrapEl.classList.toggle('ringing', this.playing && state.tones && cur === this); },
   enter() { this.start(); },
-  leave() { this.stop(); },
+  leave() { this.stop(); RingMenu.sel = this.idx; },
   key(k) {
     const n = PARSED.length;
     if (k === 'up') { this.idx = (this.idx + n - 1) % n; this.start(); }
@@ -856,8 +865,8 @@ addEventListener('keydown', e => {
   if (!k && e.key.length === 1 && cur.arrows) k = { w: 'up', a: 'left', s: 'down', d: 'right' }[e.key.toLowerCase()];
   if (k) {
     e.preventDefault();
-    if (e.repeat && cur.noRepeat && /^[0-9*#]$/.test(k)) return;
-    if (e.repeat && k === 'ok') return;
+    /* a held key only scrolls or erases text: auto-repeat never opens, toggles or leaves a screen */
+    if (e.repeat && !/^(up|down|left|right)$/.test(k) && !(k === 'c' && cur.canErase && cur.canErase())) return;
     flash(k); press(k); return;
   }
   if (e.key.length === 1 && cur.char) { e.preventDefault(); unlock(); wake(); cur.char(e.key); }
@@ -868,11 +877,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && cur
 setCur(Boot);
 wake();
 function frameLoop(now) {
+  requestAnimationFrame(frameLoop);   /* first, so an error in one frame cannot freeze the screen for good */
   cur.update && cur.update(now);
   clr();
   cur.draw(now);
   render();
-  requestAnimationFrame(frameLoop);
 }
 requestAnimationFrame(frameLoop);
 })();
